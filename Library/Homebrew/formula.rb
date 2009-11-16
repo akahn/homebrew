@@ -22,7 +22,6 @@
 #  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 require 'download_strategy'
-require 'fileutils'
 
 class FormulaUnavailableError <RuntimeError
   def initialize name
@@ -41,23 +40,6 @@ class Formulary
     everything = (HOMEBREW_REPOSITORY+'Library/Formula').children.map{|f| f.basename('.rb').to_s }
     everything.push *Formulary.get_aliases.keys if with_aliases
     everything.sort
-  end
-
-  def self.paths
-    Dir["#{HOMEBREW_REPOSITORY}/Library/Formula/*.rb"]
-  end
-  
-  def self.read name
-    Formulary.names.each do |f|
-      next if f != name
-
-      require Formula.path(name)
-      klass_name = Formula.class_s(name)
-      klass = eval(klass_name)
-      return klass        
-    end
-    
-    return nil
   end
   
   # Loads all formula classes.
@@ -91,8 +73,6 @@ end
 
 # Derive and define at least @url, see Library/Formula for examples
 class Formula
-  include FileUtils
-  
   # Homebrew determines the name
   def initialize name='__UNKNOWN__'
     set_instance_variable 'url'
@@ -113,6 +93,7 @@ class Formula
     validate_variable :version if @version
     
     set_instance_variable 'homepage'
+#    raise if @homepage.nil? # not a good idea while we have eg GitManpages!
 
     CHECKSUM_TYPES.each do |type|
       set_instance_variable type
@@ -162,7 +143,6 @@ class Formula
     when %r[^svn://] then SubversionDownloadStrategy
     when %r[^svn+http://] then SubversionDownloadStrategy
     when %r[^git://] then GitDownloadStrategy
-    when %r[^https?://(.+?\.)?googlecode\.com/hg] then MercurialDownloadStrategy
     when %r[^http://(.+?\.)?googlecode\.com/svn] then SubversionDownloadStrategy
     when %r[^http://(.+?\.)?sourceforge\.net/svnroot/] then SubversionDownloadStrategy
     when %r[^http://svn.apache.org/repos/] then SubversionDownloadStrategy
@@ -174,7 +154,7 @@ class Formula
   def caveats; nil end
 
   # patches are automatically applied after extracting the tarball
-  # return an array of strings, or if you need a patch level other than -p1
+  # return an array of strings, or if you need a patch level other than -p0
   # return a Hash eg.
   #   {
   #     :p0 => ['http://foo.com/patch1', 'http://foo.com/patch2'],
@@ -195,7 +175,7 @@ class Formula
   # redefining skip_clean? in formulas is now deprecated
   def skip_clean? path
     to_check = path.relative_path_from(prefix).to_s
-    self.class.skip_clean_paths.include? to_check
+    self.class.skip_clean_paths.include?(to_check)
   end
 
   # yields self with current working directory set to the uncompressed tarball
@@ -320,10 +300,7 @@ protected
         raise
       end
     end
-  rescue SystemCallError
-    # usually because exec could not be find the command that was requested
-    raise
-  rescue 
+  rescue
     raise BuildError.new(cmd, args, $?)
   end
 
@@ -381,7 +358,7 @@ private
 
     ohai "Patching"
     if not patches.kind_of? Hash
-      # We assume -p1
+      # We assume -p0
       patch_defns = { :p1 => patches }
     else
       patch_defns = patches
@@ -443,7 +420,7 @@ private
   end
 
   def set_instance_variable(type)
-    unless instance_variable_defined? "@#{type}"
+    if !instance_variable_defined?("@#{type}")
       class_value = self.class.send(type)
       instance_variable_set("@#{type}", class_value) if class_value
     end
@@ -476,7 +453,10 @@ private
     
     def aka *args
       @aliases ||= []
-      args.each { |item| @aliases << item.to_s }
+
+      args.each do |item|
+        @aliases << item.to_s
+      end
     end
 
     def depends_on name, *args
