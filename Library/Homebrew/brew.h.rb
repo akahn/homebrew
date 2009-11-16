@@ -31,6 +31,13 @@ def __make url, name
 
   path = Formula.path(name)
   raise "#{path} already exists" if path.exist?
+  
+  # Check if a formula aliased to this name exists.
+  already_aka = Formulary.find_alias name
+  if already_aka != nil
+    opoo "Formula #{already_aka} is aliased to #{name}."
+    puts "Please check if you are creating a duplicate."
+  end
 
   if ARGV.include? '--cmake'
     mode = :cmake
