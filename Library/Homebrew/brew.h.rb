@@ -30,10 +30,10 @@ def __make url, name
   path = Formula.path name
   raise "#{path} already exists" if path.exist?
 
-  template=<<-EOS
+  template = <<-EOS
             require 'formula'
 
-            class #{Formula.class_s name} <Formula
+            class #{Formula.class_s name} < Formula
               url '#{url}'
               homepage ''
               md5 ''
@@ -48,30 +48,31 @@ def __make url, name
             end
   EOS
 
-  mode=nil
+  mode = nil
   if ARGV.include? '--cmake'
-    mode= :cmake
+    mode = :cmake
   elsif ARGV.include? '--autotools'
-    mode= :autotools
+    mode = :autotools
   end
 
-  f=File.new path, 'w'
+  f = File.new path, 'w'
   template.each_line do |s|
     if s.strip.empty?
       f.puts
       next
     end
-    cmd=s[0..11].strip
+    cmd = s[0..11].strip
     if cmd.empty?
-      cmd=nil
+      cmd = nil
     else
-      cmd=cmd.to_sym
+      cmd = cmd.to_sym
     end
-    out=s[12..-1] || ''
+    out = s[12..-1] || ''
 
     if mode.nil?
-      # we show both but comment out cmake as it is less common
-      # the implication being the pacakger should remove whichever is not needed
+      # Include a line for both cmake and make but comment out the cmake line
+      # since it's less common. The packager should remove whichever is not 
+      # needed.
       if cmd == :cmake and not out.empty?
         f.print '#'
         out = out[1..-1]
