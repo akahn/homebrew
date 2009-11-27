@@ -24,65 +24,55 @@
 FORMULA_META_FILES = %w[README ChangeLog COPYING LICENSE COPYRIGHT AUTHORS]
 PLEASE_REPORT_BUG = "#{Tty.white}Please report this bug to #{Tty.em}#{HOMEBREW_WWW}#{Tty.reset}"
 
+
 def __make url, name
   require 'formula'
+  require 'erb'
 
-  path = Formula.path name
+  path = Formula.path(name)
   raise "#{path} already exists" if path.exist?
 
-  template = <<-EOS
-            require 'formula'
-
-            class #{Formula.class_s name} < Formula
-              url '#{url}'
-              homepage ''
-              md5 ''
-
-  cmake       depends_on 'cmake'
-
-              def install
-  autotools     system "./configure", "--prefix=\#{prefix}", "--disable-debug", "--disable-dependency-tracking"
-  cmake         system "cmake . \#{std_cmake_parameters}"
-                system "make install"
-              end
-            end
-  EOS
-
-  mode = nil
   if ARGV.include? '--cmake'
     mode = :cmake
   elsif ARGV.include? '--autotools'
     mode = :autotools
+  else
+    mode = nil
   end
 
-  f = File.new path, 'w'
-  template.each_line do |s|
-    if s.strip.empty?
-      f.puts
-      next
-    end
-    cmd = s[0..11].strip
-    if cmd.empty?
-      cmd = nil
-    else
-      cmd = cmd.to_sym
-    end
-    out = s[12..-1] || ''
+  formula = <<-EOS
+require 'formula'
 
-    if mode.nil?
-      # Include a line for both cmake and make but comment out the cmake line
-      # since it's less common. The packager should remove whichever is not 
-      # needed.
-      if cmd == :cmake and not out.empty?
-        f.print '#'
-        out = out[1..-1]
-      end
-    elsif cmd != mode and not cmd.nil?
-      next
-    end
-    f.puts out
+class #{Formula.class_s name} < Formula
+  url '#{url}'
+  homepage ''
+  md5 ''
+
+<% if mode == :cmake %>
+  depends_on 'cmake'
+<% elsif mode == nil %>
+  # depends_on 'cmake'
+<% end %>
+
+  def install
+  <% if mode == :cmake %>
+    system "cmake . \#{std_cmake_parameters}"
+  <% elsif mode == :autotools %>
+    system "./configure", "--prefix=\#{prefix}", "--disable-debug", "--disable-dependency-tracking"
+  <% else %>
+    system "./configure", "--prefix=\#{prefix}", "--disable-debug", "--disable-dependency-tracking"
+    # system "cmake . \#{std_cmake_parameters}"
+  <% end %>
+    system "make install"
   end
-  f.close
+end
+  EOS
+
+  template = ERB.new(formula, nil, '>')
+
+  File.open(path, 'w') do |f|
+    f.write(template.result(binding))
+  end
 
   return path
 end
