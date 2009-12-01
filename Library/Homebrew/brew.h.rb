@@ -24,12 +24,10 @@
 FORMULA_META_FILES = %w[README ChangeLog COPYING LICENSE COPYRIGHT AUTHORS]
 PLEASE_REPORT_BUG = "#{Tty.white}Please report this bug at #{Tty.em}http://github.com/mxcl/homebrew/issues#{Tty.reset}"
 
-
 def __make url, name
   require 'formula'
-  require 'erb'
 
-  path = Formula.path(name)
+  path = Formula.path name
   raise "#{path} already exists" if path.exist?
   
   # Check if a formula aliased to this name exists.
@@ -39,47 +37,58 @@ def __make url, name
     puts "Please check if you are creating a duplicate."
   end
 
-  if ARGV.include? '--cmake'
-    mode = :cmake
-  elsif ARGV.include? '--autotools'
-    mode = :autotools
-  else
-    mode = nil
-  end
+  template=<<-EOS
+            require 'formula'
 
-  formula = <<-EOS
-require 'formula'
+            class #{Formula.class_s name} <Formula
+              url '#{url}'
+              homepage ''
+              md5 ''
 
-class #{Formula.class_s name} < Formula
-  url '#{url}'
-  homepage ''
-  md5 ''
+  cmake       depends_on 'cmake'
 
-<% if mode == :cmake %>
-  depends_on 'cmake'
-<% elsif mode == nil %>
-  # depends_on 'cmake'
-<% end %>
-
-  def install
-  <% if mode == :cmake %>
-    system "cmake . \#{std_cmake_parameters}"
-  <% elsif mode == :autotools %>
-    system "./configure", "--prefix=\#{prefix}", "--disable-debug", "--disable-dependency-tracking"
-  <% else %>
-    system "./configure", "--prefix=\#{prefix}", "--disable-debug", "--disable-dependency-tracking"
-    # system "cmake . \#{std_cmake_parameters}"
-  <% end %>
-    system "make install"
-  end
-end
+              def install
+  autotools     system "./configure", "--prefix=\#{prefix}", "--disable-debug", "--disable-dependency-tracking"
+  cmake         system "cmake . \#{std_cmake_parameters}"
+                system "make install"
+              end
+            end
   EOS
 
-  template = ERB.new(formula, nil, '>')
-
-  File.open(path, 'w') do |f|
-    f.write(template.result(binding))
+  mode=nil
+  if ARGV.include? '--cmake'
+    mode= :cmake
+  elsif ARGV.include? '--autotools'
+    mode= :autotools
   end
+
+  f=File.new path, 'w'
+  template.each_line do |s|
+    if s.strip.empty?
+      f.puts
+      next
+    end
+    cmd=s[0..11].strip
+    if cmd.empty?
+      cmd=nil
+    else
+      cmd=cmd.to_sym
+    end
+    out=s[12..-1] || ''
+
+    if mode.nil?
+      # we show both but comment out cmake as it is less common
+      # the implication being the pacakger should remove whichever is not needed
+      if cmd == :cmake and not out.empty?
+        f.print '#'
+        out = out[1..-1]
+      end
+    elsif cmd != mode and not cmd.nil?
+      next
+    end
+    f.puts out
+  end
+  f.close
 
   return path
 end
@@ -120,34 +129,25 @@ ENV.libxml2 in your formula's install function.
   __make url, name
 end
 
-def github_info name
-  formula_name = Formula.path(name).basename
-  user = ''
-  branch = ''
-
-  if system "/usr/bin/which -s git"
-    user=`git config --global github.user`.chomp
-    all_branches = `git branch 2>/dev/null`
-     /^\*\s*(.*)/.match all_branches
-    branch = ($1 || '').chomp
-  end
-  
-  user = 'mxcl' if user.empty?
-  branch = 'master' if user.empty?
-
-  return "http://github.com/#{user}/homebrew/commits/#{branch}/Library/Formula/#{formula_name}"
-end
 
 def info name
   require 'formula'
 
-  exec 'open', github_info(name) if ARGV.flag? '--github'
+  user=''
+  user=`git config --global github.user`.chomp if system "/usr/bin/which -s git"
+  user='mxcl' if user.empty?
+  # FIXME it would be nice if we didn't assume the default branch is master
+  history="http://github.com/#{user}/homebrew/commits/master/Library/Formula/#{Formula.path(name).basename}"
+
+  exec 'open', history if ARGV.flag? '--github'
 
   f=Formula.factory name
   puts "#{f.name} #{f.version}"
   puts f.homepage
 
-  puts "Depends on: #{f.deps.join(', ')}" unless f.deps.empty?
+  if not f.deps.empty?
+    puts "Depends on: #{f.deps.join(', ')}"
+  end
 
   if f.prefix.parent.directory?
     kids=f.prefix.parent.children
@@ -166,8 +166,7 @@ def info name
     puts
   end
 
-  history = github_info
-  puts history if history
+  puts history
 
 rescue FormulaUnavailableError
   # check for DIY installation
@@ -384,11 +383,11 @@ class Cleaner
     # you can read all of this stuff online nowadays, save the space
     # info pages are pants, everyone agrees apart from Richard Stallman
     # feel free to ask for build options though! http://bit.ly/Homebrew
-    unlink = Proc.new{ |path| path.unlink unless f.skip_clean? path rescue nil }
-    %w[doc docs info].each do |fn|
-      unlink.call(f.share+fn)
-      unlink.call(f.prefix+fn)
-    end
+    (f.prefix+'share'+'doc').rmtree rescue nil
+    (f.prefix+'share'+'info').rmtree rescue nil
+    (f.prefix+'doc').rmtree rescue nil
+    (f.prefix+'docs').rmtree rescue nil
+    (f.prefix+'info').rmtree rescue nil
   end
 
 private
@@ -440,11 +439,7 @@ end
 
 def gcc_build
   `/usr/bin/gcc-4.2 -v 2>&1` =~ /build (\d{4,})/
-  if $1
-    $1.to_i 
-  else
-    nil
-  end
+  $1.to_i
 end
 
 def llvm_build
