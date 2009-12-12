@@ -25,9 +25,6 @@ FORMULA_META_FILES = %w[README ChangeLog COPYING LICENSE COPYRIGHT AUTHORS]
 PLEASE_REPORT_BUG = "#{Tty.white}Please report this bug at #{Tty.em}http://github.com/mxcl/homebrew/issues#{Tty.reset}"
 
 
-DEFAULT_USER = 'mxcl'
-DEFAULT_BRANCH = 'master'
-
 def __make url, name
   require 'formula'
   require 'erb'
@@ -135,20 +132,16 @@ def github_info name
     branch = ($1 || '').chomp
   end
   
-  user = DEFAULT_USER if user.empty?
-  branch = DEFAULT_BRANCH if user.empty?
+  user = 'mxcl' if user.empty?
+  branch = 'master' if user.empty?
 
-  history="http://github.com/#{user}/homebrew/commits/#{branch}/Library/Formula/#{formula_name}"
-  exec 'open', history
+  return "http://github.com/#{user}/homebrew/commits/#{branch}/Library/Formula/#{formula_name}"
 end
 
 def info name
   require 'formula'
 
-  if ARGV.flag? '--github'
-    github_info name
-    return
-  end
+  exec 'open', github_info(name) if ARGV.flag? '--github'
 
   f=Formula.factory name
   puts "#{f.name} #{f.version}"
@@ -173,6 +166,7 @@ def info name
     puts
   end
 
+  history = github_info
   puts history if history
 
 rescue FormulaUnavailableError
