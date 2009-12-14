@@ -159,7 +159,7 @@ class GitDownloadStrategy <AbstractDownloadStrategy
         when :branch
           nostdout { safe_system 'git', 'checkout', "origin/#{@ref}" }
         when :tag
-          nostdout { safe_system 'git', 'checkout', @ref }
+          nostdout { safe_system 'git', 'checkout', '-q', @ref }
         end
       end
       # http://stackoverflow.com/questions/160608/how-to-do-a-git-export-like-svn-export
