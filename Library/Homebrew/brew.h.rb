@@ -49,8 +49,9 @@ end
 
 def __make url, name
   require 'formula'
+  require 'erb'
 
-  path = Formula.path name
+  path = Formula.path(name)
   raise "#{path} already exists" if path.exist?
   
   # Check if a formula aliased to this name exists.
@@ -60,58 +61,47 @@ def __make url, name
     puts "Please check if you are creating a duplicate."
   end
 
-  template=<<-EOS
-            require 'formula'
+  if ARGV.include? '--cmake'
+    mode = :cmake
+  elsif ARGV.include? '--autotools'
+    mode = :autotools
+  else
+    mode = nil
+  end
 
-            class #{Formula.class_s name} <Formula
-              url '#{url}'
-              homepage ''
-              md5 ''
+  formula = <<-EOS
+require 'formula'
 
-  cmake       depends_on 'cmake'
+class #{Formula.class_s name} < Formula
+  url '#{url}'
+  homepage ''
+  md5 ''
 
-              def install
-  autotools     system "./configure", "--prefix=\#{prefix}", "--disable-debug", "--disable-dependency-tracking"
-  cmake         system "cmake . \#{std_cmake_parameters}"
-                system "make install"
-              end
-            end
+<% if mode == :cmake %>
+  depends_on 'cmake'
+<% elsif mode == nil %>
+  # depends_on 'cmake'
+<% end %>
+
+  def install
+  <% if mode == :cmake %>
+    system "cmake . \#{std_cmake_parameters}"
+  <% elsif mode == :autotools %>
+    system "./configure", "--prefix=\#{prefix}", "--disable-debug", "--disable-dependency-tracking"
+  <% else %>
+    system "./configure", "--prefix=\#{prefix}", "--disable-debug", "--disable-dependency-tracking"
+    # system "cmake . \#{std_cmake_parameters}"
+  <% end %>
+    system "make install"
+  end
+end
   EOS
 
-  mode=nil
-  if ARGV.include? '--cmake'
-    mode= :cmake
-  elsif ARGV.include? '--autotools'
-    mode= :autotools
-  end
+  template = ERB.new(formula, nil, '>')
 
-  f=File.new path, 'w'
-  template.each_line do |s|
-    if s.strip.empty?
-      f.puts
-      next
-    end
-    cmd=s[0..11].strip
-    if cmd.empty?
-      cmd=nil
-    else
-      cmd=cmd.to_sym
-    end
-    out=s[12..-1] || ''
-
-    if mode.nil?
-      # we show both but comment out cmake as it is less common
-      # the implication being the pacakger should remove whichever is not needed
-      if cmd == :cmake and not out.empty?
-        f.print '#'
-        out = out[1..-1]
-      end
-    elsif cmd != mode and not cmd.nil?
-      next
-    end
-    f.puts out
+  File.open(path, 'w') do |f|
+    f.write(template.result(binding))
   end
-  f.close
 
   return path
 end
